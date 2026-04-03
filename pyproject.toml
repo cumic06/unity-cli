@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unity-cli"
+version = "0.1.0"
+description = "CLI tool to manage Unity prefabs and scenes from command line"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "cumic06", email = "cumic@example.com"}
+]
+maintainers = [
+    {name = "cumic06", email = "cumic@example.com"}
+]
+keywords = ["unity", "prefab", "scene", "cli", "game-development", "automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Games/Entertainment",
+]
+dependencies = []
+
+[project.scripts]
+unity-cli = "unity_cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/cumic06/unity-cli"
+Repository = "https://github.com/cumic06/unity-cli.git"
+Issues = "https://github.com/cumic06/unity-cli/issues"
+Documentation = "https://github.com/cumic06/unity-cli#readme"
+
+[tool.setuptools]
+packages = ["unity_cli", "unity_cli.core", "unity_cli.utils"]
