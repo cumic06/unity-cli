@@ -141,9 +141,9 @@ class SceneManager:
             if not parent_gameobject_id:
                 raise ValueError(f'Parent GameObject not found: {parent_name}')
 
-            # 2. Find parent's Transform component
+            # 2. Find parent's Transform or RectTransform component
             for obj in doc.objects:
-                if (obj.class_id == 4 and
+                if ((obj.class_id == 4 or obj.class_id == 224) and  # Transform (4) or RectTransform (224)
                     obj.get_property('m_GameObject') and
                     str(parent_gameobject_id) in str(obj.get_property('m_GameObject'))):
                     parent_transform_id = obj.file_id
