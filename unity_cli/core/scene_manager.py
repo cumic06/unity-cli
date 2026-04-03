@@ -206,15 +206,18 @@ class SceneManager:
                     raw_lines = _create_graphic_raycaster_template(comp_id, gameobject_id)
                     class_id = 229
                 else:
-                    # Custom MonoBehaviour
-                    raw_lines = _create_monobehaviour_template(comp, comp_id, gameobject_id)
+                    # Custom MonoBehaviour — resolve script GUID from .meta file
+                    script_guid = self.project.get_script_guid(comp)
+                    raw_lines = _create_monobehaviour_template(comp, comp_id, gameobject_id, script_guid)
                     class_id = 114
 
+                # MonoBehaviour의 type_name은 항상 'MonoBehaviour'
+                obj_type_name = 'MonoBehaviour' if class_id == 114 else comp
                 comp_obj = UnityObject(
                     class_id=class_id,
                     file_id=comp_id,
                     is_stripped=False,
-                    type_name=comp,
+                    type_name=obj_type_name,
                     raw_lines=raw_lines,
                 )
                 doc.objects.append(comp_obj)
@@ -711,10 +714,22 @@ def _create_builtin_component_template(comp: str, comp_id: int, gameobject_id: i
     return lines
 
 
-def _create_monobehaviour_template(comp: str, comp_id: int, gameobject_id: int) -> list:
-    """Create template lines for a custom MonoBehaviour component"""
+def _create_monobehaviour_template(comp: str, comp_id: int, gameobject_id: int, script_guid: str = '') -> list:
+    """Create template lines for a custom MonoBehaviour component.
+
+    Args:
+        comp: Component/script class name (used for lookup, not serialized as type)
+        comp_id: fileID for this component
+        gameobject_id: fileID of the owning GameObject
+        script_guid: GUID from the script's .meta file
+    """
+    if not script_guid:
+        raise ValueError(
+            f"Script '{comp}' not found in project. "
+            f"Ensure '{comp}.cs' exists and has a valid .meta file before attaching."
+        )
     return [
-        f'{comp}:',
+        'MonoBehaviour:',
         '  m_ObjectHideFlags: 0',
         '  m_CorrespondingSourceObject: {fileID: 0}',
         '  m_PrefabInstance: {fileID: 0}',
@@ -722,7 +737,7 @@ def _create_monobehaviour_template(comp: str, comp_id: int, gameobject_id: int) 
         f'  m_GameObject: {{fileID: {gameobject_id}}}',
         '  m_Enabled: 1',
         f'  m_EditorHideFlags: 0',
-        f'  m_Script: {{fileID: 11500000, guid: 0000000000000000000000000000000, type: 3}}',
+        f'  m_Script: {{fileID: 11500000, guid: {script_guid}, type: 3}}',
         '  m_Name: ',
         '  m_EditorClassIdentifier: ',
     ]

@@ -6,6 +6,7 @@ from pathlib import Path
 from .core.project import UnityProject
 from .core.prefab_manager import PrefabManager
 from .core.scene_manager import SceneManager
+from .core.editor_bridge import capture_screenshot, find_unity_editor, install_editor_script
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -206,6 +207,33 @@ Examples:
     scene_set_parser.add_argument('target', help='Target (format: ObjectName.Component.field)')
     scene_set_parser.add_argument('value', help='New value')
 
+    # scene screenshot
+    screenshot_parser = scene_sub.add_parser('screenshot', help='Capture UI screenshot of a scene')
+    screenshot_parser.add_argument('scene', help='Scene name or path')
+    screenshot_parser.add_argument(
+        '--output', '-o',
+        type=str,
+        default='screenshot.png',
+        help='Output PNG path (default: screenshot.png)',
+    )
+    screenshot_parser.add_argument(
+        '--resolution',
+        type=str,
+        default='1920,1080',
+        help='Resolution as width,height (default: 1920,1080)',
+    )
+    screenshot_parser.add_argument(
+        '--unity-path',
+        type=str,
+        default=None,
+        help='Path to Unity Editor (auto-detected if not specified)',
+    )
+    screenshot_parser.add_argument(
+        '--install-only',
+        action='store_true',
+        help='Only install the Editor script without capturing',
+    )
+
     return parser
 
 
@@ -397,6 +425,32 @@ def main():
                     parent_name=args.parent,
                 )
                 print(f'Added group {group_name} to scene')
+
+            elif args.subcommand == 'screenshot':
+                scene_path = find_asset_file(project, args.scene, '.unity')
+                # Relative path for Unity (Assets/...)
+                rel_scene = project.relative_path(Path(scene_path))
+
+                if args.install_only:
+                    installed = install_editor_script(project.root)
+                    print(f'Editor script installed: {project.relative_path(installed)}')
+                else:
+                    # Parse resolution
+                    res_parts = args.resolution.split(',')
+                    if len(res_parts) != 2:
+                        print('Error: resolution format should be width,height')
+                        return
+                    width, height = int(res_parts[0].strip()), int(res_parts[1].strip())
+
+                    output = capture_screenshot(
+                        project_root=project.root,
+                        scene_path=rel_scene,
+                        output_path=args.output,
+                        width=width,
+                        height=height,
+                        unity_path=args.unity_path,
+                    )
+                    print(f'Screenshot saved: {output}')
 
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         print(f'Error: {e}', file=sys.stderr)

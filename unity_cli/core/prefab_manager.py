@@ -136,13 +136,19 @@ class PrefabManager:
         component_id = generate_file_id()
         class_id = COMPONENT_CLASS_IDS.get(component, 114)
 
+        # Resolve script GUID for custom MonoBehaviours
+        script_guid = ''
+        if class_id == 114:
+            script_guid = self.project.get_script_guid(component) or ''
+
         # Create component object
-        comp_lines = _create_component_template(component, component_id, gameobject.file_id)
+        comp_lines = _create_component_template(component, component_id, gameobject.file_id, script_guid)
+        obj_type_name = 'MonoBehaviour' if class_id == 114 else component
         comp_obj = UnityObject(
             class_id=class_id,
             file_id=component_id,
             is_stripped=False,
-            type_name=component,
+            type_name=obj_type_name,
             raw_lines=comp_lines,
         )
 
@@ -374,11 +380,19 @@ Transform:
 
 
 def _create_component_template(
-    component: str, component_id: int, gameobject_id: int
+    component: str, component_id: int, gameobject_id: int, script_guid: str = ''
 ) -> list:
-    """Create template lines for a component"""
+    """Create template lines for a component.
+
+    For built-in components, the type header matches the component name.
+    For custom MonoBehaviours (class_id 114), the type header is always 'MonoBehaviour'
+    and the actual script is referenced via m_Script GUID.
+    """
+    is_monobehaviour = component not in COMPONENT_CLASS_IDS
+    type_header = 'MonoBehaviour' if is_monobehaviour else component
+
     lines = [
-        f'{component}:',
+        f'{type_header}:',
         '  m_ObjectHideFlags: 0',
         '  m_CorrespondingSourceObject: {fileID: 0}',
         '  m_PrefabInstance: {fileID: 0}',
@@ -386,6 +400,20 @@ def _create_component_template(
         f'  m_GameObject: {{fileID: {gameobject_id}}}',
         '  m_Enabled: 1',
     ]
+
+    if is_monobehaviour:
+        if not script_guid:
+            raise ValueError(
+                f"Script '{component}' not found in project. "
+                f"Ensure '{component}.cs' exists and has a valid .meta file before attaching."
+            )
+        lines.extend([
+            '  m_EditorHideFlags: 0',
+            f'  m_Script: {{fileID: 11500000, guid: {script_guid}, type: 3}}',
+            '  m_Name: ',
+            '  m_EditorClassIdentifier: ',
+        ])
+
     return lines
 
 
