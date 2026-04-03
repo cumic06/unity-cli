@@ -138,6 +138,18 @@ Examples:
         default=[],
         help='Components to add',
     )
+    add_obj_parser.add_argument(
+        '--parent',
+        type=str,
+        default=None,
+        help='Parent GameObject name for hierarchy',
+    )
+    add_obj_parser.add_argument(
+        '--pos',
+        type=str,
+        default='0,0,0',
+        help='Position as x,y,z (default: 0,0,0)',
+    )
 
     # scene add-prefab
     add_prefab_parser = scene_sub.add_parser('add-prefab', help='Add prefab instance to scene')
@@ -294,7 +306,21 @@ def main():
 
             elif args.subcommand == 'add-object':
                 scene_path = find_asset_file(project, args.scene, '.unity')
-                manager.add_object(scene_path, args.name, args.component if args.component else None)
+
+                # Parse position
+                pos_parts = args.pos.split(',')
+                if len(pos_parts) != 3:
+                    print('Error: position format should be x,y,z')
+                    return
+                position = tuple(float(p.strip()) for p in pos_parts)
+
+                manager.add_object(
+                    scene_path,
+                    args.name,
+                    args.component if args.component else None,
+                    args.parent,
+                    position,
+                )
                 print(f'Added GameObject {args.name} to scene')
 
             elif args.subcommand == 'add-prefab':

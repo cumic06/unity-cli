@@ -7,6 +7,22 @@ from .project import UnityProject
 from ..utils.guid import generate_guid, generate_file_id, read_guid_from_meta
 from ..utils.meta import create_scene_meta, delete_meta
 
+# Component class IDs mapping
+COMPONENT_CLASS_IDS = {
+    'Transform': 4,
+    'BoxCollider2D': 61,
+    'SpriteRenderer': 212,
+    'Image': 225,
+    'CanvasGroup': 225,  # UI Component
+    'Button': 225,  # UI Component
+    'Canvas': 224,
+    'RectTransform': 224,
+    'GraphicRaycaster': 229,
+    'TextMeshProUGUI': 224,
+    'CanvasScaler': 226,
+    # Default for custom MonoBehaviours
+}
+
 
 class SceneManager:
     """Manages scene creation, editing, and object management"""
@@ -83,7 +99,12 @@ class SceneManager:
         return info
 
     def add_object(
-        self, scene_path: str, obj_name: str, components: Optional[List[str]] = None
+        self,
+        scene_path: str,
+        obj_name: str,
+        components: Optional[List[str]] = None,
+        parent_name: Optional[str] = None,
+        position: Tuple[float, float, float] = (0, 0, 0),
     ) -> None:
         """
         Add a new GameObject to a scene.
@@ -92,12 +113,24 @@ class SceneManager:
             scene_path: Path to scene file
             obj_name: Name of the new GameObject
             components: List of component types to add (optional)
+            parent_name: Name of parent GameObject (optional, for hierarchy)
+            position: Position as (x, y, z) tuple (default: 0, 0, 0)
         """
         path = Path(scene_path)
         if not path.exists():
             raise FileNotFoundError(f'Scene not found: {scene_path}')
 
         doc = UnityDocument.load(str(path))
+
+        # Find parent if specified
+        parent_id = 0
+        if parent_name:
+            for obj in doc.objects:
+                if obj.class_id == 1 and obj.get_property('m_Name') == parent_name:
+                    parent_id = obj.file_id
+                    break
+            if parent_id == 0:
+                raise ValueError(f'Parent GameObject not found: {parent_name}')
 
         # Create GameObject
         gameobject_id = generate_file_id()
@@ -116,7 +149,7 @@ class SceneManager:
             file_id=transform_id,
             is_stripped=False,
             type_name='Transform',
-            raw_lines=_create_transform_template(transform_id, gameobject_id),
+            raw_lines=_create_transform_template(transform_id, gameobject_id, parent_id, position),
         )
 
         doc.objects.append(gameobject_obj)
@@ -126,12 +159,22 @@ class SceneManager:
         if components:
             for comp in components:
                 comp_id = generate_file_id()
+                class_id = COMPONENT_CLASS_IDS.get(comp, 114)  # Default to MonoBehaviour
+
+                # Create appropriate template for component
+                if comp in ['BoxCollider2D', 'SpriteRenderer', 'Image', 'CanvasGroup']:
+                    raw_lines = _create_builtin_component_template(comp, comp_id, gameobject_id, class_id)
+                else:
+                    # Custom MonoBehaviour
+                    raw_lines = _create_monobehaviour_template(comp, comp_id, gameobject_id)
+                    class_id = 114
+
                 comp_obj = UnityObject(
-                    class_id=114,  # MonoBehaviour
+                    class_id=class_id,
                     file_id=comp_id,
                     is_stripped=False,
                     type_name=comp,
-                    raw_lines=_create_component_template(comp, comp_id, gameobject_id),
+                    raw_lines=raw_lines,
                 )
                 doc.objects.append(comp_obj)
                 _add_component_reference_to_gameobject(gameobject_obj, comp_id)
@@ -440,7 +483,12 @@ def _create_gameobject_template(name: str, gameobject_id: int, transform_id: int
     ]
 
 
-def _create_transform_template(transform_id: int, gameobject_id: int) -> list:
+def _create_transform_template(
+    transform_id: int,
+    gameobject_id: int,
+    parent_id: int = 0,
+    position: Tuple[float, float, float] = (0, 0, 0),
+) -> list:
     """Create template lines for a Transform"""
     return [
         'Transform:',
@@ -459,16 +507,16 @@ def _create_transform_template(transform_id: int, gameobject_id: int) -> list:
         '    z: 0',
         '    w: 1',
         '  m_LocalPosition:',
-        '    x: 0',
-        '    y: 0',
-        '    z: 0',
+        f'    x: {position[0]}',
+        f'    y: {position[1]}',
+        f'    z: {position[2]}',
         '  m_LocalScale:',
         '    x: 1',
         '    y: 1',
         '    z: 1',
         '  m_ConstrainProportionsScale: 0',
         '  m_Children: []',
-        '  m_Father: {fileID: 0}',
+        f'  m_Father: {{fileID: {parent_id}}}',
         '  m_RootOrder: 0',
         '  m_LocalEulerAnglesHint:',
         '    x: 0',
@@ -477,8 +525,81 @@ def _create_transform_template(transform_id: int, gameobject_id: int) -> list:
     ]
 
 
-def _create_component_template(comp: str, comp_id: int, gameobject_id: int) -> list:
-    """Create template lines for a component"""
+def _create_builtin_component_template(comp: str, comp_id: int, gameobject_id: int, class_id: int) -> list:
+    """Create template lines for built-in Unity components"""
+    lines = [
+        f'{comp}:',
+        '  m_ObjectHideFlags: 0',
+        '  m_CorrespondingSourceObject: {fileID: 0}',
+        '  m_PrefabInstance: {fileID: 0}',
+        '  m_PrefabAsset: {fileID: 0}',
+        f'  m_GameObject: {{fileID: {gameobject_id}}}',
+        '  m_Enabled: 1',
+    ]
+
+    # Add component-specific fields
+    if comp == 'BoxCollider2D':
+        lines.extend([
+            '  m_Density: 1',
+            '  m_Material: {fileID: 0}',
+            '  m_IsTrigger: 0',
+            '  m_UsedByEffector: 0',
+            '  m_UsedByComposite: 0',
+            '  m_Offset: {x: 0, y: 0}',
+            '  m_SpriteTilingProperty:',
+            '    border: {x: 0, y: 0, z: 0, w: 0}',
+            '    pivot: {x: 0.5, y: 0.5}',
+            '    oldSize: {x: 1, y: 1}',
+            '    newSize: {x: 1, y: 1}',
+            '    adaptiveTilingThreshold: 0.5',
+            '    m_AutoTiling: 0',
+            '  serializedVersion: 2',
+            '  m_Size: {x: 1, y: 1}',
+            '  m_EdgeRadius: 0',
+        ])
+    elif comp == 'SpriteRenderer':
+        lines.extend([
+            '  m_Sprite: {fileID: 0}',
+            '  m_Color: {r: 1, g: 1, b: 1, a: 1}',
+            '  m_FlipX: 0',
+            '  m_FlipY: 0',
+            '  m_DrawMode: 0',
+            '  m_Size: {x: 1, y: 1}',
+            '  m_TileMode: 0',
+            '  m_WasSpriteAssigned: 0',
+            '  m_MaskInteraction: 0',
+            '  m_SpriteSortPoint: 0',
+        ])
+    elif comp == 'Image':
+        lines.extend([
+            '  m_TargetGraphic: {fileID: 0}',
+            '  m_OnClick:',
+            '    m_PersistentCalls:',
+            '      m_Calls: []',
+            '  m_Sprite: {fileID: 0}',
+            '  m_Type: 0',
+            '  m_PreserveAspect: 0',
+            '  m_FillCenter: 1',
+            '  m_FillMethod: 4',
+            '  m_FillAmount: 1',
+            '  m_FillClockwise: 1',
+            '  m_FillOrigin: 0',
+            '  m_UseSpriteMesh: 0',
+            '  m_PixelsPerUnitAdjust: 1',
+        ])
+    elif comp == 'CanvasGroup':
+        lines.extend([
+            '  m_Alpha: 1',
+            '  m_Interactable: 1',
+            '  m_BlocksRaycasts: 1',
+            '  m_IgnoreParentGroups: 0',
+        ])
+
+    return lines
+
+
+def _create_monobehaviour_template(comp: str, comp_id: int, gameobject_id: int) -> list:
+    """Create template lines for a custom MonoBehaviour component"""
     return [
         f'{comp}:',
         '  m_ObjectHideFlags: 0',
@@ -487,6 +608,10 @@ def _create_component_template(comp: str, comp_id: int, gameobject_id: int) -> l
         '  m_PrefabAsset: {fileID: 0}',
         f'  m_GameObject: {{fileID: {gameobject_id}}}',
         '  m_Enabled: 1',
+        f'  m_EditorHideFlags: 0',
+        f'  m_Script: {{fileID: 11500000, guid: 0000000000000000000000000000000, type: 3}}',
+        '  m_Name: ',
+        '  m_EditorClassIdentifier: ',
     ]
 
 
