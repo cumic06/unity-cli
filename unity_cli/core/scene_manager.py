@@ -105,6 +105,9 @@ class SceneManager:
         components: Optional[List[str]] = None,
         parent_name: Optional[str] = None,
         position: Tuple[float, float, float] = (0, 0, 0),
+        is_ui: bool = False,
+        rect_size: Tuple[float, float] = (100, 100),
+        anchors: Tuple[float, float, float, float] = (0.5, 0.5, 0.5, 0.5),
     ) -> None:
         """
         Add a new GameObject to a scene.
@@ -115,6 +118,9 @@ class SceneManager:
             components: List of component types to add (optional)
             parent_name: Name of parent GameObject (optional, for hierarchy)
             position: Position as (x, y, z) tuple (default: 0, 0, 0)
+            is_ui: Whether this is a UI element (use RectTransform)
+            rect_size: Size for RectTransform (width, height)
+            anchors: Anchor values (min_x, min_y, max_x, max_y) for UI elements
         """
         path = Path(scene_path)
         if not path.exists():
@@ -158,13 +164,25 @@ class SceneManager:
             raw_lines=_create_gameobject_template(obj_name, gameobject_id, transform_id),
         )
 
-        transform_obj = UnityObject(
-            class_id=4,
-            file_id=transform_id,
-            is_stripped=False,
-            type_name='Transform',
-            raw_lines=_create_transform_template(transform_id, gameobject_id, parent_transform_id, position),
-        )
+        # Create Transform or RectTransform based on is_ui
+        if is_ui:
+            transform_obj = UnityObject(
+                class_id=224,  # RectTransform
+                file_id=transform_id,
+                is_stripped=False,
+                type_name='RectTransform',
+                raw_lines=_create_rect_transform_template(
+                    transform_id, gameobject_id, parent_transform_id, position, rect_size, anchors
+                ),
+            )
+        else:
+            transform_obj = UnityObject(
+                class_id=4,  # Transform
+                file_id=transform_id,
+                is_stripped=False,
+                type_name='Transform',
+                raw_lines=_create_transform_template(transform_id, gameobject_id, parent_transform_id, position),
+            )
 
         doc.objects.append(gameobject_obj)
         doc.objects.append(transform_obj)
@@ -176,8 +194,17 @@ class SceneManager:
                 class_id = COMPONENT_CLASS_IDS.get(comp, 114)  # Default to MonoBehaviour
 
                 # Create appropriate template for component
-                if comp in ['BoxCollider2D', 'SpriteRenderer', 'Image', 'CanvasGroup']:
+                if comp == 'Canvas':
+                    raw_lines = _create_canvas_template(comp_id, gameobject_id)
+                    class_id = 224
+                elif comp in ['BoxCollider2D', 'SpriteRenderer', 'Image', 'CanvasGroup']:
                     raw_lines = _create_builtin_component_template(comp, comp_id, gameobject_id, class_id)
+                elif comp == 'CanvasScaler':
+                    raw_lines = _create_canvas_scaler_template(comp_id, gameobject_id)
+                    class_id = 226
+                elif comp == 'GraphicRaycaster':
+                    raw_lines = _create_graphic_raycaster_template(comp_id, gameobject_id)
+                    class_id = 229
                 else:
                     # Custom MonoBehaviour
                     raw_lines = _create_monobehaviour_template(comp, comp_id, gameobject_id)
@@ -192,6 +219,28 @@ class SceneManager:
                 )
                 doc.objects.append(comp_obj)
                 _add_component_reference_to_gameobject(gameobject_obj, comp_id)
+
+            # Auto-add CanvasScaler and GraphicRaycaster if Canvas is added
+            if 'Canvas' in components:
+                for auto_comp in ['CanvasScaler', 'GraphicRaycaster']:
+                    if auto_comp not in components:
+                        comp_id = generate_file_id()
+                        if auto_comp == 'CanvasScaler':
+                            raw_lines = _create_canvas_scaler_template(comp_id, gameobject_id)
+                            class_id = 226
+                        else:
+                            raw_lines = _create_graphic_raycaster_template(comp_id, gameobject_id)
+                            class_id = 229
+
+                        comp_obj = UnityObject(
+                            class_id=class_id,
+                            file_id=comp_id,
+                            is_stripped=False,
+                            type_name=auto_comp,
+                            raw_lines=raw_lines,
+                        )
+                        doc.objects.append(comp_obj)
+                        _add_component_reference_to_gameobject(gameobject_obj, comp_id)
 
         doc.save(str(path))
 
@@ -539,6 +588,56 @@ def _create_transform_template(
     ]
 
 
+def _create_rect_transform_template(
+    transform_id: int,
+    gameobject_id: int,
+    parent_id: int = 0,
+    position: Tuple[float, float, float] = (0, 0, 0),
+    rect_size: Tuple[float, float] = (100, 100),
+    anchors: Tuple[float, float, float, float] = (0.5, 0.5, 0.5, 0.5),
+) -> list:
+    """Create template lines for a RectTransform (UI)"""
+    anchor_min_x, anchor_min_y, anchor_max_x, anchor_max_y = anchors
+    return [
+        'RectTransform:',
+        '  m_ObjectHideFlags: 0',
+        '  m_CorrespondingSourceObject: {fileID: 0}',
+        '  m_PrefabInstance: {fileID: 0}',
+        '  m_PrefabAsset: {fileID: 0}',
+        f'  m_GameObject: {{fileID: {gameobject_id}}}',
+        '  m_Enabled: 1',
+        '  m_EditorHideFlags: 0',
+        '  m_RotationOrder: 4',
+        '  m_LocalRotation:',
+        '    serializedVersion: 2',
+        '    x: 0',
+        '    y: 0',
+        '    z: 0',
+        '    w: 1',
+        '  m_LocalPosition:',
+        f'    x: {position[0]}',
+        f'    y: {position[1]}',
+        f'    z: {position[2]}',
+        '  m_LocalScale:',
+        '    x: 1',
+        '    y: 1',
+        '    z: 1',
+        '  m_ConstrainProportionsScale: 0',
+        '  m_Children: []',
+        f'  m_Father: {{fileID: {parent_id}}}',
+        '  m_RootOrder: 0',
+        '  m_LocalEulerAnglesHint:',
+        '    x: 0',
+        '    y: 0',
+        '    z: 0',
+        '  m_AnchorMin: {x: ' + str(anchor_min_x) + ', y: ' + str(anchor_min_y) + '}',
+        '  m_AnchorMax: {x: ' + str(anchor_max_x) + ', y: ' + str(anchor_max_y) + '}',
+        '  m_AnchoredPosition: {x: 0, y: 0}',
+        f'  m_SizeDelta: {{x: {rect_size[0]}, y: {rect_size[1]}}}',
+        '  m_Pivot: {x: 0.5, y: 0.5}',
+    ]
+
+
 def _create_builtin_component_template(comp: str, comp_id: int, gameobject_id: int, class_id: int) -> list:
     """Create template lines for built-in Unity components"""
     lines = [
@@ -626,6 +725,85 @@ def _create_monobehaviour_template(comp: str, comp_id: int, gameobject_id: int) 
         f'  m_Script: {{fileID: 11500000, guid: 0000000000000000000000000000000, type: 3}}',
         '  m_Name: ',
         '  m_EditorClassIdentifier: ',
+    ]
+
+
+def _create_canvas_template(comp_id: int, gameobject_id: int) -> list:
+    """Create template lines for Canvas component"""
+    return [
+        'Canvas:',
+        '  m_ObjectHideFlags: 0',
+        '  m_CorrespondingSourceObject: {fileID: 0}',
+        '  m_PrefabInstance: {fileID: 0}',
+        '  m_PrefabAsset: {fileID: 0}',
+        f'  m_GameObject: {{fileID: {gameobject_id}}}',
+        '  m_Enabled: 1',
+        '  m_EditorHideFlags: 0',
+        '  m_RenderMode: 0',
+        '  m_Camera: {fileID: 0}',
+        '  m_PlaneDistance: 100',
+        '  m_PixelPerfect: 0',
+        '  m_ReceivesEvents: 1',
+        '  m_OverrideSorting: 0',
+        '  m_OverridePixelPerfect: 0',
+        '  m_SortingBucketNormalizedSize: 0',
+        '  m_AdditionalShaderChannelsFlag: 0',
+        '  m_SortingLayerID: 0',
+        '  m_SortingOrder: 0',
+        '  m_TargetDisplay: 0',
+    ]
+
+
+def _create_canvas_scaler_template(comp_id: int, gameobject_id: int) -> list:
+    """Create template lines for CanvasScaler component"""
+    return [
+        'CanvasScaler:',
+        '  m_ObjectHideFlags: 0',
+        '  m_CorrespondingSourceObject: {fileID: 0}',
+        '  m_PrefabInstance: {fileID: 0}',
+        '  m_PrefabAsset: {fileID: 0}',
+        f'  m_GameObject: {{fileID: {gameobject_id}}}',
+        '  m_Enabled: 1',
+        '  m_EditorHideFlags: 0',
+        '  m_UiScaleMode: 0',
+        '  m_ReferencePixelsPerUnit: 100',
+        '  m_ScaleFactor: 1',
+        '  m_ReferenceResolution: {x: 1920, y: 1080}',
+        '  m_ScreenMatchMode: 0',
+        '  m_MatchWidthOrHeight: 0',
+        '  m_PhysicalUnit: 3',
+        '  m_FallbackScreenDPI: 96',
+        '  m_DefaultSpriteDPI: 96',
+        '  m_DynamicPixelsPerUnit: 1',
+        '  m_PreferredWidth: 1920',
+        '  m_PreferredHeight: 1080',
+        '  m_PreferredAspectRatio: 1.7777778',
+        '  m_ExtensionScale: 1',
+        '  m_OnBeforeUpdate:',
+        '    m_PersistentCalls:',
+        '      m_Calls: []',
+    ]
+
+
+def _create_graphic_raycaster_template(comp_id: int, gameobject_id: int) -> list:
+    """Create template lines for GraphicRaycaster component"""
+    return [
+        'GraphicRaycaster:',
+        '  m_ObjectHideFlags: 0',
+        '  m_CorrespondingSourceObject: {fileID: 0}',
+        '  m_PrefabInstance: {fileID: 0}',
+        '  m_PrefabAsset: {fileID: 0}',
+        f'  m_GameObject: {{fileID: {gameobject_id}}}',
+        '  m_Enabled: 1',
+        '  m_EditorHideFlags: 0',
+        '  m_EventMask:',
+        '    serializedVersion: 2',
+        '    m_Bits: 4294967295',
+        '  m_Touchable: 1',
+        '  m_BlockingObjects: 0',
+        '  m_BlockingMask:',
+        '    serializedVersion: 2',
+        '    m_Bits: 4294967295',
     ]
 
 

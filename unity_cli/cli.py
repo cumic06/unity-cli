@@ -150,6 +150,23 @@ Examples:
         default='0,0,0',
         help='Position as x,y,z (default: 0,0,0)',
     )
+    add_obj_parser.add_argument(
+        '--is-ui',
+        action='store_true',
+        help='Create as UI element (use RectTransform)',
+    )
+    add_obj_parser.add_argument(
+        '--rect',
+        type=str,
+        default='100,100',
+        help='RectTransform size as width,height (default: 100,100)',
+    )
+    add_obj_parser.add_argument(
+        '--anchors',
+        type=str,
+        default='0.5,0.5,0.5,0.5',
+        help='Anchor values as min_x,min_y,max_x,max_y (default: 0.5,0.5,0.5,0.5)',
+    )
 
     # scene add-prefab
     add_prefab_parser = scene_sub.add_parser('add-prefab', help='Add prefab instance to scene')
@@ -171,6 +188,17 @@ Examples:
     rm_obj_parser = scene_sub.add_parser('remove-object', help='Remove GameObject from scene')
     rm_obj_parser.add_argument('scene', help='Scene name or path')
     rm_obj_parser.add_argument('name', help='GameObject name')
+
+    # scene add-group
+    add_group_parser = scene_sub.add_parser('add-group', help='Add group folder to scene')
+    add_group_parser.add_argument('scene', help='Scene name or path')
+    add_group_parser.add_argument('name', help='Group name (@ prefix will be added)')
+    add_group_parser.add_argument(
+        '--parent',
+        type=str,
+        default=None,
+        help='Parent GameObject name',
+    )
 
     # scene set
     scene_set_parser = scene_sub.add_parser('set', help='Set object property')
@@ -314,12 +342,29 @@ def main():
                     return
                 position = tuple(float(p.strip()) for p in pos_parts)
 
+                # Parse rect size
+                rect_parts = args.rect.split(',')
+                if len(rect_parts) != 2:
+                    print('Error: rect format should be width,height')
+                    return
+                rect_size = tuple(float(p.strip()) for p in rect_parts)
+
+                # Parse anchors
+                anchor_parts = args.anchors.split(',')
+                if len(anchor_parts) != 4:
+                    print('Error: anchors format should be min_x,min_y,max_x,max_y')
+                    return
+                anchors = tuple(float(p.strip()) for p in anchor_parts)
+
                 manager.add_object(
                     scene_path,
                     args.name,
                     args.component if args.component else None,
                     args.parent,
                     position,
+                    args.is_ui,
+                    rect_size,
+                    anchors,
                 )
                 print(f'Added GameObject {args.name} to scene')
 
@@ -341,6 +386,17 @@ def main():
                 scene_path = find_asset_file(project, args.scene, '.unity')
                 manager.remove_object(scene_path, args.name)
                 print(f'Removed GameObject {args.name} from scene')
+
+            elif args.subcommand == 'add-group':
+                scene_path = find_asset_file(project, args.scene, '.unity')
+                group_name = f'@{args.name}' if not args.name.startswith('@') else args.name
+                manager.add_object(
+                    scene_path,
+                    group_name,
+                    components=None,
+                    parent_name=args.parent,
+                )
+                print(f'Added group {group_name} to scene')
 
     except (FileNotFoundError, ValueError, RuntimeError) as e:
         print(f'Error: {e}', file=sys.stderr)
