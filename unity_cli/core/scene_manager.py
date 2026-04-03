@@ -123,14 +123,28 @@ class SceneManager:
         doc = UnityDocument.load(str(path))
 
         # Find parent if specified
-        parent_id = 0
+        parent_transform_id = 0
         if parent_name:
+            parent_gameobject_id = None
+            # 1. Find parent GameObject
             for obj in doc.objects:
                 if obj.class_id == 1 and obj.get_property('m_Name') == parent_name:
-                    parent_id = obj.file_id
+                    parent_gameobject_id = obj.file_id
                     break
-            if parent_id == 0:
+
+            if not parent_gameobject_id:
                 raise ValueError(f'Parent GameObject not found: {parent_name}')
+
+            # 2. Find parent's Transform component
+            for obj in doc.objects:
+                if (obj.class_id == 4 and
+                    obj.get_property('m_GameObject') and
+                    str(parent_gameobject_id) in str(obj.get_property('m_GameObject'))):
+                    parent_transform_id = obj.file_id
+                    break
+
+            if not parent_transform_id:
+                raise ValueError(f'Parent Transform not found for: {parent_name}')
 
         # Create GameObject
         gameobject_id = generate_file_id()
@@ -149,7 +163,7 @@ class SceneManager:
             file_id=transform_id,
             is_stripped=False,
             type_name='Transform',
-            raw_lines=_create_transform_template(transform_id, gameobject_id, parent_id, position),
+            raw_lines=_create_transform_template(transform_id, gameobject_id, parent_transform_id, position),
         )
 
         doc.objects.append(gameobject_obj)
